@@ -1,0 +1,4 @@
+#!/bin/sh
+# git commit-msg hook: subject at most 8 characters, no body (see check_commit_msg.py).
+root="$(git rev-parse --show-toplevel)"
+exec python3 "$root/scripts/check_commit_msg.py" "$1"
