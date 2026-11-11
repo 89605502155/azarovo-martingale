@@ -26,11 +26,18 @@ azarovo-martingale detect log.csv --c 20                   # formula (11), (12)
 azarovo-martingale detect log.csv --c 20 --vm vm-01        # one VM
 azarovo-martingale detect log.csv --c 20 --detector cusum  # formula (14)
 azarovo-martingale detect log.csv --c 20 --detector mixture
+azarovo-martingale detect log.csv --c 20 --detector mixture --bets 0.05,0.1,0.2 --weights 1,1,2
 ```
 
 The output is one line per alarm: `vm-name<TAB>time`. The detector is run over the
 whole log with a restart after each alarm. `--c` is required, because the detector
 needs the bound on the change per step (see `analyze` to estimate it).
+
+With `--detector mixture`, `--bets` sets the grid of bet fractions and `--weights`
+the weight of each bet in the mixture, both comma-separated. The defaults are the
+bets 0.1, …, 0.9 with equal weights. The weights are normalised to sum 1, so
+`1,1,2` means `0.25,0.25,0.5`. There must be one weight per bet. The options are
+refused with the other detectors, and `analyze` takes the same two options.
 
 ## `analyze`: the full analysis of a log
 
@@ -60,6 +67,8 @@ It writes `summary.md` and `summary.json` to the output folder (default
 | `--grace` | 60 | seconds after a growth period that still count as a detection |
 | `--step` | 1 | base step in seconds |
 | `--split-risk` | off | share `delta` and `alpha` evenly between the VMs |
+| `--bets` | 0.1,…,0.9 | mixture detector: bet fractions in `[0, 1)`, comma-separated |
+| `--weights` | equal | mixture detector: one weight per bet, normalised to sum 1 |
 | `--sep` | detected | column delimiter |
 | `--plot` | off | draw a trace per VM |
 | `--json` | off | print JSON instead of Markdown |

@@ -13,15 +13,41 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
 from .analysis import AnalysisOptions, analyse_log, render_markdown, report_to_dict
-from .detectors import CusumGrowthDetector, GrowthDetector, GrowthTest, MixtureGrowthDetector
+from .detectors import (
+    DEFAULT_BETS,
+    CusumGrowthDetector,
+    GrowthDetector,
+    GrowthTest,
+    MixtureGrowthDetector,
+)
 from .interval import monitoring_interval
 from .logs import read_log
+
+BETS_HELP = "mixture bet fractions in [0, 1), comma-separated (default 0.1,...,0.9)"
+WEIGHTS_HELP = (
+    "mixture weights, one per bet, comma-separated; normalised to sum 1 (default uniform)"
+)
+
+
+def _float_list(text: str) -> tuple[float, ...]:
+    """Parse ``0.1,0.2,0.5`` into a tuple of floats (an argparse type)."""
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    try:
+        values = tuple(float(part) for part in parts)
+    except ValueError as exc:
+        msg = f"expected comma-separated numbers, got {text!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if not values:
+        msg = "expected at least one number"
+        raise argparse.ArgumentTypeError(msg)
+    return values
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -53,6 +79,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cusum-threshold", type=float, default=1e5, help="level of (14)")
     p.add_argument("--step", type=float, default=1.0, help="base step, s (default 1)")
     p.add_argument("--sep", default=None, help="column delimiter (default: detected)")
+    p.add_argument("--bets", type=_float_list, default=None, help=BETS_HELP)
+    p.add_argument("--weights", type=_float_list, default=None, help=WEIGHTS_HELP)
 
     p = sub.add_parser("analyze", help="full analysis of a monitoring log")
     p.add_argument("log", type=Path, help="CSV monitoring log")
@@ -100,6 +128,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--split-risk", action="store_true", help="share delta and alpha evenly between the VMs"
     )
     p.add_argument("--plot", action="store_true", help="draw a trace per VM (needs the plot extra)")
+    p.add_argument("--bets", type=_float_list, default=None, help=BETS_HELP)
+    p.add_argument("--weights", type=_float_list, default=None, help=WEIGHTS_HELP)
     p.add_argument("--json", action="store_true", help="print the JSON report instead of Markdown")
     return parser
 
@@ -114,7 +144,8 @@ def _make_detector(args: argparse.Namespace, c: float) -> GrowthTest:
     if args.detector == "cusum":
         return CusumGrowthDetector(c, args.lam, args.cusum_threshold)
     if args.detector == "mixture":
-        return MixtureGrowthDetector(c, args.alpha)
+        bets = DEFAULT_BETS if args.bets is None else args.bets
+        return MixtureGrowthDetector(c, args.alpha, bets, args.weights)
     return GrowthDetector(c, args.lam, args.alpha)
 
 
@@ -154,6 +185,8 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         cusum_threshold=args.cusum_threshold,
         grace=args.grace,
         split_risk=args.split_risk,
+        bets=DEFAULT_BETS if args.bets is None else args.bets,
+        weights=args.weights,
     )
     log = read_log(args.log, sep=args.sep)
     if not log.vms:
@@ -186,10 +219,30 @@ def _safe(name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name) or "vm"
 
 
+def _check_mixture_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Check ``--bets`` and ``--weights`` and normalise the weights, or exit with status 2."""
+    if args.command == "detect" and args.detector != "mixture":
+        if args.bets is not None or args.weights is not None:
+            parser.error("--bets and --weights apply only to --detector mixture")
+        return
+    if args.command not in ("detect", "analyze") or args.weights is None:
+        return
+    bets = DEFAULT_BETS if args.bets is None else args.bets
+    if len(args.weights) != len(bets):
+        parser.error(
+            f"--weights needs one value per bet: {len(args.weights)} weights for {len(bets)} bets"
+        )
+    total = math.fsum(args.weights)
+    if not (math.isfinite(total) and total > 0.0):
+        parser.error("--weights must have a positive sum")
+    args.weights = tuple(w / total for w in args.weights)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command-line tool and return the exit status."""
     parser = _build_parser()
     args = parser.parse_args(argv)
+    _check_mixture_args(parser, args)
     handlers = {"interval": _cmd_interval, "detect": _cmd_detect, "analyze": _cmd_analyze}
     try:
         return handlers[args.command](args)

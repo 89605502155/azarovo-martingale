@@ -25,6 +25,8 @@ monitoring interval of KVM virtual machines (A. Ferubko and O. Kazakov, BGITU).
   `analyse_log` (checks of A1 and A2, the guarantee (6), detectors with false
   alarms and delays, replay of the policies), `render_markdown` and `report_to_dict`.
 * Command-line tool `azarovo-martingale` with `interval`, `detect` and `analyze`.
+* Options `--bets` and `--weights` of the mixture detector in `detect` and `analyze`
+  (comma-separated; weights normalised to sum 1; `AnalysisOptions.bets` and `weights`).
 * `record_measurement(t, used, free)` on `VmMonitor` and `record_measurement(vm, t, used, free)`
   on `FleetMonitor` record one measurement and return the `Decision`.
 * `validate_measurement(t, used, free, last_t=None)`: the one check of incoming data.

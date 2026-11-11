@@ -21,8 +21,9 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, ClassVar, cast
 
-from ._checks import check_bet, check_level, check_positive
+from ._checks import check_bet, check_bets, check_level, check_positive, check_weights
 from .detectors import (
+    DEFAULT_BETS,
     CusumGrowthDetector,
     GrowthDetector,
     GrowthTest,
@@ -78,6 +79,10 @@ class AnalysisOptions:
         as a detection rather than a false alarm.
     split_risk : bool
         Share ``delta`` and ``alpha`` evenly between the VMs (Boole's inequality).
+    bets : tuple of float, default DEFAULT_BETS
+        Grid of bet fractions of the mixture detector, each in [0, 1).
+    weights : tuple of float, optional
+        Weights of the mixture detector, one per bet, summing to 1. Uniform if None.
     """
 
     step: float = 1.0
@@ -95,6 +100,8 @@ class AnalysisOptions:
     cusum_threshold: float = 1e5
     grace: float = 60.0
     split_risk: bool = False
+    bets: tuple[float, ...] = DEFAULT_BETS
+    weights: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
         """Check the parameters."""
@@ -114,6 +121,9 @@ class AnalysisOptions:
         if not self.cusum_threshold > 1.0:
             msg = "cusum_threshold must be above 1"
             raise ValueError(msg)
+        check_bets("bets", tuple(self.bets))
+        if self.weights is not None:
+            check_weights("weights", tuple(self.weights), len(self.bets))
         if not 0.0 < self.c_quantile <= 1.0 or not self.c_margin >= 1.0:
             msg = "c_quantile must lie in (0, 1] and c_margin must be at least 1"
             raise ValueError(msg)
@@ -350,7 +360,7 @@ def _make_detector(name: str, c: float, o: AnalysisOptions) -> GrowthTest:
         return GrowthDetector(c, o.lam, o.alpha)
     if name == "cusum":
         return CusumGrowthDetector(c, o.lam, o.cusum_threshold)
-    return MixtureGrowthDetector(c, o.alpha)
+    return MixtureGrowthDetector(c, o.alpha, o.bets, o.weights)
 
 
 def _evaluate_detectors(
