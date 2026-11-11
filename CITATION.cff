@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "azarovo-martingale: martingale choice of the monitoring interval for VM memory, with anytime-valid growth detectors"
+abstract: >-
+  A Python library that implements the methods of the article on the martingale
+  choice of the monitoring interval of KVM virtual machine memory: the interval
+  from the Azuma–Hoeffding inequality with risk delta, betting (test-martingale)
+  growth detectors valid at any check moment by Ville's inequality (plain,
+  CUSUM-type), the joint scheduler of Fig. 3, the estimate of the largest change
+  c from logs, log analysis and a command-line tool. The core uses the standard
+  library only. Additions beyond the article: a mixture of bets with no tuned
+  fraction and sub-Gaussian bets.
+version: 0.1.0
+date-released: 2026-11-11
+license: MIT
+repository-code: "https://github.com/89605502155/azarovo-martingale"
+url: "https://github.com/89605502155/azarovo-martingale"
+keywords:
+  - martingale
+  - test martingale
+  - anytime-valid inference
+  - Ville inequality
+  - Azuma-Hoeffding inequality
+  - change detection
+  - CUSUM
+  - memory management
+  - virtual machines
+  - KVM
+authors:
+  - family-names: Ferubko
+    given-names: Andrey
+    email: ferubko1999@yandex.ru
+    affiliation: "Bryansk State Engineering-Technological University (BGITU)"
