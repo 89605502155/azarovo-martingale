@@ -42,8 +42,9 @@ from .interval import azuma_bound, max_rise_bound, monitoring_interval
 from .logs import GROWTH_PHASE, MonitoringLog, VmLog, read_log
 from .monitor import FleetMonitor, VmMonitor
 from .scheduler import DETECTOR_KINDS, Decision, DetectorKind, MonitoringScheduler
+from .validation import validate_measurement
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 
 __all__ = [
     "DEFAULT_BETS",
@@ -77,4 +78,5 @@ __all__ = [
     "read_log",
     "render_markdown",
     "report_to_dict",
+    "validate_measurement",
 ]

@@ -86,8 +86,10 @@ def test_exceedance_share() -> None:
 
 def test_vm_monitor_calibrates_then_schedules() -> None:
     vm = VmMonitor("vm-1", warmup=5, c_margin=1.0)
-    assert vm.update(0.0, 1000.0, 500.0).calibrated is False
-    decisions = [vm.update(float(t), 1000.0 + 2.0 * (t % 2), 500.0) for t in range(1, 6)]
+    assert vm.record_measurement(0.0, 1000.0, 500.0).calibrated is False
+    decisions = [
+        vm.record_measurement(float(t), 1000.0 + 2.0 * (t % 2), 500.0) for t in range(1, 6)
+    ]
     assert decisions[-1].calibrated is True
     assert vm.calibrated
     assert vm.c == pytest.approx(2.0)
@@ -97,23 +99,23 @@ def test_vm_monitor_calibrates_then_schedules() -> None:
 def test_vm_monitor_due_and_time_order() -> None:
     vm = VmMonitor("vm-1", c=20.0)
     assert vm.due(0.0)
-    vm.update(0.0, 2048.0, 1352.0)
+    vm.record_measurement(0.0, 2048.0, 1352.0)
     assert vm.next_check_time == 1.0
-    vm.update(1.0, 2049.0, 1351.0)
+    vm.record_measurement(1.0, 2049.0, 1351.0)
     assert vm.interval == 495
     assert vm.due(496.0)
     assert not vm.due(100.0)
     with pytest.raises(ValueError, match="increase"):
-        vm.update(1.0, 2049.0, 1351.0)
+        vm.record_measurement(1.0, 2049.0, 1351.0)
     with pytest.raises(ValueError, match="finite"):
-        vm.update(2.0, math.nan, 1351.0)
+        vm.record_measurement(2.0, math.nan, 1351.0)
 
 
 def test_vm_monitor_counts_alarms_and_redistributions() -> None:
     vm = VmMonitor("vm-1", c=50.0, n_max=None)
-    vm.update(0.0, 0.0, 10_000.0)
+    vm.record_measurement(0.0, 0.0, 10_000.0)
     for t in range(1, 40):
-        vm.update(float(t), 30.0 * t, 10_000.0)
+        vm.record_measurement(float(t), 30.0 * t, 10_000.0)
     assert vm.alarms >= 1
     assert vm.redistributions == vm.alarms
 
@@ -121,11 +123,13 @@ def test_vm_monitor_counts_alarms_and_redistributions() -> None:
 def test_vm_monitor_state_round_trip() -> None:
     vm = VmMonitor("vm-1", warmup=4, c_margin=1.2)
     for t in range(6):
-        vm.update(float(t), 1000.0 + 3.0 * t, 900.0)
+        vm.record_measurement(float(t), 1000.0 + 3.0 * t, 900.0)
     data = json.loads(json.dumps(vm.to_dict()))
     restored = VmMonitor.from_dict(data)
     assert restored.to_dict() == vm.to_dict()
-    assert restored.update(6.0, 1024.0, 900.0) == vm.update(6.0, 1024.0, 900.0)
+    assert restored.record_measurement(6.0, 1024.0, 900.0) == vm.record_measurement(
+        6.0, 1024.0, 900.0
+    )
 
 
 def test_fleet_splits_risk_between_vms() -> None:
@@ -138,21 +142,31 @@ def test_fleet_splits_risk_between_vms() -> None:
 
 def test_fleet_auto_registers_and_schedules() -> None:
     fleet = FleetMonitor(c=20.0)
-    fleet.update("vm-1", 0.0, 1000.0, 500.0)
-    fleet.update("vm-2", 0.0, 1000.0, 15.0)
+    fleet.record_measurement("vm-1", 0.0, 1000.0, 500.0)
+    fleet.record_measurement("vm-2", 0.0, 1000.0, 15.0)
     assert fleet.names == ["vm-1", "vm-2"]
     assert fleet.due(0.5) == []
     assert set(fleet.due(1.0)) == {"vm-1", "vm-2"}
     assert "vm-1" in fleet
     assert len(fleet) == 2
-    d = fleet.update("vm-2", 1.0, 1000.0, 15.0)
+    d = fleet.record_measurement("vm-2", 1.0, 1000.0, 15.0)
     assert d.redistribute
 
 
 def test_fleet_state_round_trip() -> None:
     fleet = FleetMonitor(n_vms=2, c=20.0, delta=0.02)
-    fleet.update("vm-1", 0.0, 100.0, 512.0)
+    fleet.record_measurement("vm-1", 0.0, 100.0, 512.0)
     restored = FleetMonitor.from_dict(json.loads(json.dumps(fleet.to_dict())))
     assert restored.to_dict() == fleet.to_dict()
     with pytest.raises(KeyError):
         restored.monitor("missing")
+
+
+def test_scheduler_and_monitor_pass_mixture_weights_through():
+    sched = MonitoringScheduler(c=20.0, kind="mixture", lams=(0.2, 0.8), weights=(0.0, 1.0))
+    assert sched.detector.weights == (0.0, 1.0)
+    vm = VmMonitor("vm", c=20.0, kind="mixture", lams=(0.2, 0.8), weights=(0.25, 0.75))
+    vm.record_measurement(0.0, used=1000.0, free=500.0)
+    vm.record_measurement(1.0, used=1001.0, free=500.0)
+    restored = VmMonitor.from_dict(vm.to_dict())
+    assert restored.to_dict() == vm.to_dict()

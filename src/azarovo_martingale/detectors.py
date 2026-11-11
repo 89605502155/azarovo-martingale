@@ -32,7 +32,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, Self
 
-from ._checks import check_bet, check_bets, check_level, check_positive
+from ._checks import check_bet, check_bets, check_level, check_positive, check_weights
 
 __all__ = [
     "DEFAULT_BETS",
@@ -78,6 +78,16 @@ def _log_mean_exp(values: Sequence[float]) -> float:
     """Return ``log(mean(exp(v)))`` computed without overflow."""
     top = max(values)
     return top + math.log(sum(math.exp(v - top) for v in values) / len(values))
+
+
+def _log_weighted_mean_exp(values: Sequence[float], weights: Sequence[float]) -> float:
+    """Return ``log(sum(w exp(v)))`` for weights summing to 1, without overflow or underflow.
+
+    The reference point is taken over the bets with positive weight, so the sum
+    never vanishes when some bet has weight zero.
+    """
+    top = max(v for v, w in zip(values, weights, strict=True) if w > 0.0)
+    return top + math.log(sum(w * math.exp(v - top) for v, w in zip(values, weights, strict=True)))
 
 
 @dataclass
@@ -318,30 +328,44 @@ class SubGaussianGrowthDetector:
 
 @dataclass
 class MixtureGrowthDetector:
-    """Addition beyond the article: a mixture of betting tests with no tuned fraction.
+    """Addition beyond the article: a weighted mixture of betting tests.
 
-    The capital is the uniform average over a fixed grid of bet fractions
-    ``lams`` of the products ``prod (1 + lam_j Y_k)``, as in formula (11). Each
-    product is a non-negative supermartingale with initial value 1 under the
-    hypothesis of formulas (10), and an average of such supermartingales is one
-    too. So Ville's inequality (4) applies to the mixture without any choice of
-    ``lam``, and the false-alarm probability stays at most ``alpha``.
+    The capital is the weighted average ``K = sum_j w_j K_j`` over a grid of bet
+    fractions ``lams``, where ``K_j = prod_k (1 + lam_j Y_k)`` is the single bet of
+    formula (11). Each ``K_j`` is a non-negative supermartingale with initial value
+    1 under the hypothesis of formulas (10). A convex combination of such
+    supermartingales is one too, so Ville's inequality (4) applies to the mixture
+    with no choice of ``lam``, and the false-alarm probability stays at most
+    ``alpha`` for any weights and any grid.
 
-    The price of not choosing is a penalty of ``log(len(lams))`` in the log
-    capital, about 2.2 for the default nine bets. The gain is that the detector
-    tracks the unknown speed of growth: for slow growth the large bets lose, for
-    fast growth the small ones do, and the mixture is never far from the better.
+    The price of not choosing is a penalty in the log capital. With uniform
+    weights ``w_j = 1/J`` it is at most ``log J``: for every bet,
+    ``log K >= log K_j - log J``. The default nine bets give ``log 9``, about 2.2.
+    Other weights move the penalty to ``log(1/w_j)`` for the bet ``j`` that
+    matters. The gain is that the detector tracks the unknown speed of growth.
 
     Parameters
     ----------
     c : float
         Largest change of the use over one base step, MiB.
     alpha : float, default 0.01
-        Admissible probability of a false alarm.
-    lams : tuple of float, default DEFAULT_BETS
-        Grid of bet fractions, each in (0, 1).
+        Admissible probability of a false alarm, in (0, 1).
+    lams : tuple of float, default DEFAULT_BETS (0.1, ..., 0.9)
+        Grid of bet fractions. Non-empty; each bet in [0, 1). A bet of 0 is the
+        "no bet" capital, which is allowed.
+    weights : tuple of float, optional
+        One non-negative weight per bet, summing to 1 (tolerance 1e-9). By default
+        uniform. Weights are fixed before the data, like the grid.
     logs : list of float, optional
         Logarithms of the capitals of the single bets; zeros at the start.
+
+    Raises
+    ------
+    TypeError
+        If a bet or a weight is not a real number (a bool is refused).
+    ValueError
+        If the grid is empty, a bet is outside [0, 1), the weights do not match
+        the grid, are negative, or do not sum to 1.
 
     Examples
     --------
@@ -353,19 +377,26 @@ class MixtureGrowthDetector:
     ...         det.reset()
     >>> alarms[0] < 25
     True
+    >>> narrow = MixtureGrowthDetector(c=50.0, lams=(0.2, 0.8), weights=(0.75, 0.25))
+    >>> narrow.weights
+    (0.75, 0.25)
     """
 
     c: float
     alpha: float = 0.01
     lams: tuple[float, ...] = DEFAULT_BETS
+    weights: tuple[float, ...] | None = None
     logs: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        """Check the parameters."""
+        """Check the parameters and fill in the uniform weights."""
         check_positive("c", self.c)
         check_level("alpha", self.alpha)
-        self.lams = tuple(self.lams)
-        check_bets("lams", self.lams)
+        self.lams = check_bets("lams", tuple(self.lams))
+        if self.weights is None:
+            self.weights = tuple(1.0 / len(self.lams) for _ in self.lams)
+        else:
+            self.weights = check_weights("weights", tuple(self.weights), len(self.lams))
         if not self.logs:
             self.logs = [0.0] * len(self.lams)
         if len(self.logs) != len(self.lams):
@@ -375,7 +406,10 @@ class MixtureGrowthDetector:
     @property
     def log_capital(self) -> float:
         """Logarithm of the mixture capital ``K``."""
-        return _log_mean_exp(self.logs)
+        weights = self.weights
+        if weights is None:  # cannot happen after __post_init__; kept for the type checker
+            weights = tuple(1.0 / len(self.logs) for _ in self.logs)
+        return _log_weighted_mean_exp(self.logs, weights)
 
     @property
     def capital(self) -> float:

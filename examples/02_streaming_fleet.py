@@ -20,7 +20,7 @@ for t in range(1, 3601):
         if name == "vm-2" and 1200 < t <= 1500:  # a memory-hungry task: 8 MiB/s for 5 min
             used[name] += 8.0
     for name in names if t == 1 else fleet.due(float(t)):
-        decision = fleet.update(name, float(t), used[name], free=6000.0 - used[name])
+        decision = fleet.record_measurement(name, float(t), used[name], free=6000.0 - used[name])
         checks[name] += 1
         redistributions += int(decision.redistribute)
 

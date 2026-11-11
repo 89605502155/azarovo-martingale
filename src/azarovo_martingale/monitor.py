@@ -9,7 +9,6 @@ and does not lose its calibration.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Self
@@ -17,6 +16,7 @@ from typing import Any, Self
 from ._checks import check_level, check_positive
 from .estimate import estimate_c
 from .scheduler import Decision, DetectorKind, MonitoringScheduler
+from .validation import validate_measurement
 
 __all__ = ["FleetMonitor", "VmMonitor"]
 
@@ -53,8 +53,8 @@ class VmMonitor:
     Examples
     --------
     >>> vm = VmMonitor("vm-01", c=20.0)
-    >>> _ = vm.update(0.0, used=2048.0, free=1352.0)
-    >>> decision = vm.update(1.0, used=2049.0, free=1351.0)
+    >>> _ = vm.record_measurement(0.0, used=2048.0, free=1352.0)
+    >>> decision = vm.record_measurement(1.0, used=2049.0, free=1351.0)
     >>> decision.interval
     495
     >>> vm.next_check_time, vm.due(100.0), vm.due(496.0)
@@ -74,6 +74,7 @@ class VmMonitor:
         kind: DetectorKind = "ville",
         cusum_threshold: float = 1e5,
         lams: tuple[float, ...] | None = None,
+        weights: tuple[float, ...] | None = None,
         step: float = 1.0,
         warmup: int = 50,
         c_quantile: float = 1.0,
@@ -94,6 +95,7 @@ class VmMonitor:
             "kind": kind,
             "cusum_threshold": cusum_threshold,
             "lams": None if lams is None else list(lams),
+            "weights": None if weights is None else list(weights),
             "step": step,
             "warmup": warmup,
             "c_quantile": c_quantile,
@@ -111,6 +113,7 @@ class VmMonitor:
     def _make_scheduler(self, c: float) -> MonitoringScheduler:
         o = self._options
         lams = None if o["lams"] is None else tuple(o["lams"])
+        weights = None if o["weights"] is None else tuple(o["weights"])
         return MonitoringScheduler(
             c=c,
             delta=o["delta"],
@@ -121,6 +124,7 @@ class VmMonitor:
             kind=o["kind"],
             cusum_threshold=o["cusum_threshold"],
             lams=lams,
+            weights=weights,
         )
 
     @property
@@ -168,13 +172,17 @@ class VmMonitor:
         return nxt is None or t >= nxt
 
     # ----------------------------------------------------------------- update
-    def update(self, t: float, used: float, free: float) -> Decision:
-        """Take in one reading of the VM and return the decision of the scheduler.
+    def record_measurement(self, t: float, used: float, free: float) -> Decision:
+        """Record one measurement of the VM and return the scheduling decision.
+
+        The decision gives the next polling interval, whether to redistribute
+        the memory, and whether the growth detector raised an alarm. The first
+        measurement only sets the baseline and returns ``n_min``.
 
         Parameters
         ----------
         t : float
-            Time of the reading; must be later than the previous one.
+            Time of the measurement; must be later than the previous one.
         used : float
             Memory used by the VM, MiB.
         free : float
@@ -183,26 +191,21 @@ class VmMonitor:
         Returns
         -------
         Decision
-            Next interval, redistribution flag and alarm flag. The first reading
-            only sets the baseline and returns ``n_min``.
+            Next interval, redistribution flag and alarm flag.
 
         Raises
         ------
+        TypeError
+            If a value is not a real number (see :func:`validate_measurement`).
         ValueError
-            If the readings are not finite, or the time does not increase.
+            If a value is NaN, infinite or negative, or the time does not increase.
         """
-        for label, value in (("t", t), ("used", used), ("free", free)):
-            if not math.isfinite(value):
-                msg = f"{label} must be finite, got {value!r}"
-                raise ValueError(msg)
+        t, used, free = validate_measurement(t, used, free, self._last_t)
         if self._last_t is None or self._last_used is None:
             self._last_t, self._last_used = t, used
             return Decision(
                 self.interval, redistribute=False, alarm=False, calibrated=self.calibrated
             )
-        if t <= self._last_t:
-            msg = f"time must increase: {t!r} after {self._last_t!r}"
-            raise ValueError(msg)
         step = float(self._options["step"])
         n_elapsed = (t - self._last_t) / step
         dx = used - self._last_used
@@ -295,7 +298,7 @@ class FleetMonitor:
     Examples
     --------
     >>> fleet = FleetMonitor(n_vms=2, c=20.0)
-    >>> _ = fleet.update("vm-1", 0.0, used=1000.0, free=500.0)
+    >>> _ = fleet.record_measurement("vm-1", 0.0, used=1000.0, free=500.0)
     >>> fleet.monitor("vm-1").calibrated
     True
     >>> round(fleet.monitor("vm-1").next_check_time)
@@ -353,12 +356,13 @@ class FleetMonitor:
         """Return the monitor of a VM. Raises ``KeyError`` for an unknown name."""
         return self._monitors[name]
 
-    def update(self, name: str, t: float, used: float, free: float) -> Decision:
-        """Take in a reading of a VM, registering the VM on its first reading."""
-        mon = self._monitors.get(name)
+    def record_measurement(self, vm: str, t: float, used: float, free: float) -> Decision:
+        """Record one measurement of VM ``vm``, registering the VM on its first measurement."""
+        mon = self._monitors.get(vm)
         if mon is None:
-            mon = self.add(name)
-        return mon.update(t, used, free)
+            validate_measurement(t, used, free)  # refuse a bad first reading before registering
+            mon = self.add(vm)
+        return mon.record_measurement(t, used, free)
 
     def due(self, t: float) -> list[str]:
         """Return the names of the VMs that should be read at time ``t``."""

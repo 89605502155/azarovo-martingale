@@ -69,14 +69,26 @@ print(round(c, 1), round(exceedance_share(deltas, None, c), 2))  # 48.0 0.0
 `quantile = 1` — максимум, выбор статьи. Меньший квантиль устойчивее к редким скачкам;
 тогда гарантия (6) уже не покрывает эти скачки.
 
+`MixtureGrowthDetector(c, alpha=0.01, lams=DEFAULT_BETS, weights=None)` принимает
+сетку ставок `lams` (непустая, каждая ставка в [0, 1), по умолчанию от 0,1 до 0,9)
+и необязательные `weights` (по одному неотрицательному весу на ставку, в сумме 1;
+по умолчанию равные). Прочие значения дают `TypeError` (не вещественное число,
+логические значения тоже) или `ValueError`.
+
+```python
+from azarovo_martingale import MixtureGrowthDetector
+
+narrow = MixtureGrowthDetector(c=50.0, lams=(0.2, 0.8), weights=(0.75, 0.25))
+```
+
 ## Одна ВМ, потоком
 
 ```python
 from azarovo_martingale import VmMonitor
 
 vm = VmMonitor("vm-01", c=20.0, delta=0.01, alpha=0.01, n_max=600)
-vm.update(0.0, used=2048.0, free=1352.0)  # отправная точка
-d = vm.update(1.0, used=2049.0, free=1351.0)
+vm.record_measurement(0.0, used=2048.0, free=1352.0)  # отправная точка
+d = vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(d.interval, vm.checks, vm.next_check_time)  # 495 1 496.0
 ```
 
@@ -91,7 +103,9 @@ from azarovo_martingale import FleetMonitor
 
 fleet = FleetMonitor(n_vms=4, delta=0.04, alpha=0.04, c=20.0)  # каждой ВМ достаётся 0,01
 fleet.add("vm-a")
-fleet.update("vm-b", 0.0, used=1000.0, free=500.0)  # vm-b регистрируется при первом показании
+fleet.record_measurement(
+    "vm-b", 0.0, used=1000.0, free=500.0
+)  # vm-b регистрируется при первом показании
 print(fleet.names, fleet.due(10.0))
 ```
 
@@ -104,10 +118,23 @@ import json
 from azarovo_martingale import VmMonitor
 
 vm = VmMonitor("vm-01", c=20.0)
-vm.update(0.0, used=2048.0, free=1352.0)
+vm.record_measurement(0.0, used=2048.0, free=1352.0)
 saved = json.dumps(vm.to_dict())  # сериализуется в JSON
 restored = VmMonitor.from_dict(json.loads(saved))
 print(restored.next_check_time)  # 1.0
+```
+
+## Проверка показаний
+
+`validate_measurement(t, used, free, last_t=None)` — единственная проверка входных
+данных; `record_measurement` использует её до изменения состояния. Логические
+значения, строки, `None` и прочие невещественные значения дают `TypeError`. NaN,
+бесконечность, отрицательные значения и время, которое не возрастает, дают `ValueError`.
+
+```python
+from azarovo_martingale import validate_measurement
+
+print(validate_measurement(1, 2048, 1352.5))  # (1.0, 2048.0, 1352.5)
 ```
 
 ## Анализ журнала

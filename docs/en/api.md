@@ -69,14 +69,26 @@ print(round(c, 1), round(exceedance_share(deltas, None, c), 2))  # 48.0 0.0
 `quantile = 1` is the maximum, the choice of the article. A smaller quantile is
 robust to rare jumps; the guarantee (6) then no longer covers those jumps.
 
+`MixtureGrowthDetector(c, alpha=0.01, lams=DEFAULT_BETS, weights=None)` takes its
+bet grid `lams` (non-empty, each bet in [0, 1), default 0.1 to 0.9) and optional
+`weights` (one non-negative weight per bet, summing to 1; uniform by default).
+Other values raise `TypeError` (not a real number, booleans included) or
+`ValueError`.
+
+```python
+from azarovo_martingale import MixtureGrowthDetector
+
+narrow = MixtureGrowthDetector(c=50.0, lams=(0.2, 0.8), weights=(0.75, 0.25))
+```
+
 ## One VM, streaming
 
 ```python
 from azarovo_martingale import VmMonitor
 
 vm = VmMonitor("vm-01", c=20.0, delta=0.01, alpha=0.01, n_max=600)
-vm.update(0.0, used=2048.0, free=1352.0)  # baseline
-d = vm.update(1.0, used=2049.0, free=1351.0)
+vm.record_measurement(0.0, used=2048.0, free=1352.0)  # baseline
+d = vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(d.interval, vm.checks, vm.next_check_time)  # 495 1 496.0
 ```
 
@@ -91,7 +103,7 @@ from azarovo_martingale import FleetMonitor
 
 fleet = FleetMonitor(n_vms=4, delta=0.04, alpha=0.04, c=20.0)  # each VM gets 0.01
 fleet.add("vm-a")
-fleet.update("vm-b", 0.0, used=1000.0, free=500.0)  # registers vm-b on first use
+fleet.record_measurement("vm-b", 0.0, used=1000.0, free=500.0)  # registers vm-b on first use
 print(fleet.names, fleet.due(10.0))
 ```
 
@@ -104,10 +116,23 @@ import json
 from azarovo_martingale import VmMonitor
 
 vm = VmMonitor("vm-01", c=20.0)
-vm.update(0.0, used=2048.0, free=1352.0)
+vm.record_measurement(0.0, used=2048.0, free=1352.0)
 saved = json.dumps(vm.to_dict())  # JSON-serialisable
 restored = VmMonitor.from_dict(json.loads(saved))
 print(restored.next_check_time)  # 1.0
+```
+
+## Checking readings
+
+`validate_measurement(t, used, free, last_t=None)` is the one check of incoming
+data; `record_measurement` uses it before any state changes. Booleans, strings,
+`None` and other non-real values raise `TypeError`. NaN, infinity, negative
+values, and a time that does not increase raise `ValueError`.
+
+```python
+from azarovo_martingale import validate_measurement
+
+print(validate_measurement(1, 2048, 1352.5))  # (1.0, 2048.0, 1352.5)
 ```
 
 ## Log analysis

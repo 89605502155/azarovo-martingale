@@ -28,7 +28,7 @@ English version: [README.md](https://github.com/89605502155/azarovo-martingale/b
 
 Библиотека сопровождает статью «Мартингальный подход к выбору интервала
 мониторинга в адаптивной системе управления памятью виртуальных машин KVM»
-Андрея Ферубко, Брянский государственный инженерно-технологический университет
+Андрея Ферубко и Олега Казакова, Брянский государственный инженерно-технологический университет
 (BGITU). Теория изложена в
 [docs/ru/theory.md](https://github.com/89605502155/azarovo-martingale/blob/main/docs/ru/theory.md).
 
@@ -68,7 +68,7 @@ print(decision.interval, decision.redistribute)  # 71 False
 from azarovo_martingale import FleetMonitor
 
 fleet = FleetMonitor(n_vms=2, delta=0.02, alpha=0.02, c=20.0)  # риск делят 2 ВМ
-decision = fleet.update("vm-1", t=0.0, used=2048.0, free=1352.0)
+decision = fleet.record_measurement("vm-1", t=0.0, used=2048.0, free=1352.0)
 print(fleet.due(60.0))  # ['vm-1'], когда интервал ВМ истёк
 ```
 
@@ -90,7 +90,7 @@ azarovo-martingale analyze log.csv --out results/run1 --plot
 | `CusumGrowthDetector` | формула (14) | статистика типа CUSUM, без задержки после долгого покоя |
 | `MonitoringScheduler` | рис. 3, этапы 3–6 | совместный алгоритм: детектор, перераспределение, интервал |
 | `estimate_c` | допущение А1 | наибольшее приращение за шаг по данным, с квантилем и запасом |
-| `VmMonitor`, `FleetMonitor` | рис. 3 для потоков | `update(t, used, free)` для ВМ, общий риск на парк |
+| `VmMonitor`, `FleetMonitor` | рис. 3 для потоков | `record_measurement(t, used, free)` для ВМ, общий риск на парк |
 | `read_log`, `analyse_log`, `render_markdown` | допущения А1, А2, формула (6) | проверки по журналу, детекторы, воспроизведение политик |
 
 ### Дополнения сверх статьи
@@ -98,7 +98,8 @@ azarovo-martingale analyze log.csv --out results/run1 --plot
 Они отмечены в документации и в отчётах.
 
 * **`MixtureGrowthDetector`** (новое). Равновзвешенная смесь проверок ставками по
-  фиксированной сетке долей `lam` (от 0,1 до 0,9). Не нужно выбирать `lam`, а
+  фиксированной сетке долей `lam` (по умолчанию от 0,1 до 0,9; сетка `lams` и веса
+  `weights` — параметры конструктора). Не нужно выбирать `lam`, а
   гарантия Вилля сохраняется, потому что среднее мартингалов снова является
   мартингалом. На синтетических примерах быстрый рост обнаруживается примерно за
   14 шагов, медленный — примерно за 70; одиночная ставка с `lam = 0,5` даёт 18 и 95
@@ -123,7 +124,7 @@ azarovo-martingale analyze log.csv --out results/run1 --plot
   выборке эту гарантию теряют.
 * **Он работает с логарифмом капитала.** Произведение многих множителей обращается
   в ноль после нескольких часов покоя; детекторы хранят `ln K` и остаются чувствительными.
-* **Это потоковый API по ВМ с состоянием.** `VmMonitor.update(t, used, free)`,
+* **Это потоковый API по ВМ с состоянием.** `VmMonitor.record_measurement(t, used, free)`,
   `FleetMonitor` для парка ВМ, а также `to_dict`/`from_dict` для перезапуска.
 * **Есть анализ журналов реальных данных.** `azarovo-martingale analyze` проверяет
   допущения гарантии по журналу, считает ложные тревоги и задержки и воспроизводит
@@ -150,7 +151,7 @@ CSV-файл с заголовком и строкой на каждый отс�
 * [Публикация](https://github.com/89605502155/azarovo-martingale/blob/main/docs/ru/publishing.md)
 
 Примеры — в папке [examples/](https://github.com/89605502155/azarovo-martingale/tree/main/examples).
-Тяжёлые имитационные исследования — в [experiments/](https://github.com/89605502155/azarovo-martingale/tree/main/experiments), в CI они не запускаются.
+Тяжёлые имитационные исследования — в [experiments/](https://github.com/89605502155/azarovo-martingale/tree/main/experiments), по умолчанию они не запускаются.
 
 ## Разработка
 
@@ -162,13 +163,20 @@ scripts/install_hooks.sh  # хук сообщений коммитов, один
 ```
 
 Заголовок коммита не длиннее 8 символов и без тела; `scripts/check_commit_msg.py`
-проверяет это в хуке и в CI.
+проверяет это в локальном хуке.
+
+## Авторы
+
+- Андрей Ферубко (Andrey Ferubko), Брянский государственный инженерно-технологический университет (БГИТУ),
+  [ORCID 0009-0006-5625-137X](https://orcid.org/0009-0006-5625-137X), ferubko1999@yandex.ru
+- Олег Казаков (Oleg Kazakov), Брянский государственный инженерно-технологический университет (БГИТУ),
+  [ORCID 0000-0001-9665-8138](https://orcid.org/0000-0001-9665-8138), kazakov@bgitu.ru
 
 ## Цитирование
 
 См. [CITATION.cff](https://github.com/89605502155/azarovo-martingale/blob/main/CITATION.cff).
-Андрей Ферубко, Брянский государственный инженерно-технологический университет (BGITU), 2026.
+Андрей Ферубко и Олег Казаков, Брянский государственный инженерно-технологический университет (BGITU), 2026.
 
 ## Лицензия
 
-MIT. Copyright (c) 2026 Andrey Ferubko.
+MIT. Copyright (c) 2026 Andrey Ferubko, Oleg Kazakov.

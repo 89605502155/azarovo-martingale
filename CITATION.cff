@@ -11,7 +11,7 @@ abstract: >-
   c from logs, log analysis and a command-line tool. The core uses the standard
   library only. Additions beyond the article: a mixture of bets with no tuned
   fraction and sub-Gaussian bets.
-version: 0.1.0
+version: 0.0.1
 date-released: 2026-11-11
 license: MIT
 repository-code: "https://github.com/89605502155/azarovo-martingale"
@@ -31,4 +31,10 @@ authors:
   - family-names: Ferubko
     given-names: Andrey
     email: ferubko1999@yandex.ru
+    orcid: "https://orcid.org/0009-0006-5625-137X"
+    affiliation: "Bryansk State Engineering-Technological University (BGITU)"
+  - family-names: Kazakov
+    given-names: Oleg
+    email: kazakov@bgitu.ru
+    orcid: "https://orcid.org/0000-0001-9665-8138"
     affiliation: "Bryansk State Engineering-Technological University (BGITU)"

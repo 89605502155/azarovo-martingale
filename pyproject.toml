@@ -1,12 +1,13 @@
 [project]
 name = "azarovo-martingale"
-version = "0.1.0"
+version = "0.0.1"
 description = "Martingale choice of the monitoring interval for VM memory: Azuma-Hoeffding intervals with risk delta, anytime-valid growth detectors (Ville), a joint scheduler, and log analysis"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
     { name = "Andrey Ferubko", email = "ferubko1999@yandex.ru" },
+    { name = "Oleg Kazakov", email = "kazakov@bgitu.ru" },
 ]
 requires-python = ">=3.11"
 keywords = [

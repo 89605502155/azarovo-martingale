@@ -83,7 +83,8 @@ alarm per 28 hours on average, for a step of one second.
 ## 5. Additions beyond the article
 
 * **Mixture of bets** (`MixtureGrowthDetector`). Average the capitals of bets with
-  several fractions `lam`, with equal weights. Each bet is a test martingale, and so
+  several fractions `lam`, with equal weights by default (any fixed weights summing
+  to 1 are allowed; the penalty for a bet `j` is then `log(1/w_j)`). Each bet is a test martingale, and so
   is their average. The guarantee of Ville therefore holds, and no `lam` has to be
   chosen. The price is a penalty of about `log(9) = 2.2` in the log capital for nine
   bets.

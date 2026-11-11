@@ -81,6 +81,9 @@ class MonitoringScheduler:
     lams : tuple of float, optional
         Parameters of the ``subgaussian`` or ``mixture`` detector; defaults are
         those of the detector classes.
+    weights : tuple of float, optional
+        Weights of the bets of the ``mixture`` detector (non-negative, sum 1);
+        uniform by default. Ignored by the other kinds.
 
     Attributes
     ----------
@@ -110,6 +113,7 @@ class MonitoringScheduler:
     kind: DetectorKind = "ville"
     cusum_threshold: float = 1e5
     lams: tuple[float, ...] | None = None
+    weights: tuple[float, ...] | None = None
     detector: GrowthTest = field(init=False, repr=False)
     interval: int = field(init=False)
 
@@ -167,6 +171,7 @@ class MonitoringScheduler:
             "kind": self.kind,
             "cusum_threshold": self.cusum_threshold,
             "lams": None if self.lams is None else list(self.lams),
+            "weights": None if self.weights is None else list(self.weights),
             "interval": self.interval,
             "detector": self.detector.to_dict(),
         }
@@ -177,6 +182,8 @@ class MonitoringScheduler:
         params = {k: v for k, v in data.items() if k not in {"interval", "detector"}}
         if params["lams"] is not None:
             params["lams"] = tuple(params["lams"])
+        if params["weights"] is not None:
+            params["weights"] = tuple(params["weights"])
         sched = cls(**params)
         sched.detector = _detector_from_dict(sched.kind, data["detector"])
         sched.interval = int(data["interval"])
@@ -209,6 +216,8 @@ def _build_detector(sched: MonitoringScheduler) -> GrowthTest:
             return SubGaussianGrowthDetector(sched.c, sched.alpha)
         return SubGaussianGrowthDetector(sched.c, sched.alpha, sched.lams)
     if kind == "mixture":
-        return MixtureGrowthDetector(sched.c, sched.alpha, sched.lams or DEFAULT_BETS)
+        return MixtureGrowthDetector(
+            sched.c, sched.alpha, sched.lams or DEFAULT_BETS, sched.weights
+        )
     msg = f"kind must be one of {', '.join(DETECTOR_KINDS)}, got {kind!r}"
     raise ValueError(msg)

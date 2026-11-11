@@ -67,9 +67,9 @@ print(decision.redistribute)  # True
 from azarovo_martingale import VmMonitor
 
 vm = VmMonitor("vm-01", c=20.0)
-vm.update(0.0, used=2048.0, free=1352.0)
+vm.record_measurement(0.0, used=2048.0, free=1352.0)
 print(vm.next_check_time)  # 1.0
-vm.update(1.0, used=2049.0, free=1351.0)
+vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(vm.interval, vm.due(100.0))  # 495 False
 ```
 

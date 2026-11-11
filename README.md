@@ -28,8 +28,8 @@ Documentation: [English](https://github.com/89605502155/azarovo-martingale/tree/
 
 The library accompanies the article «Martingale approach to the choice of the
 monitoring interval in the adaptive memory management of KVM virtual machines»
-by Andrey Ferubko, Bryansk State Engineering-Technological University (BGITU)
-(Брянский государственный инженерно-технологический университет). Its theory is
+by Andrey Ferubko and Oleg Kazakov, Bryansk State Engineering-Technological University
+(BGITU) (Брянский государственный инженерно-технологический университет). Its theory is
 in [docs/en/theory.md](https://github.com/89605502155/azarovo-martingale/blob/main/docs/en/theory.md).
 
 ## Installation
@@ -68,7 +68,7 @@ A streaming monitor of several VMs, with state that survives a restart:
 from azarovo_martingale import FleetMonitor
 
 fleet = FleetMonitor(n_vms=2, delta=0.02, alpha=0.02, c=20.0)  # risk shared by 2 VMs
-decision = fleet.update("vm-1", t=0.0, used=2048.0, free=1352.0)
+decision = fleet.record_measurement("vm-1", t=0.0, used=2048.0, free=1352.0)
 print(fleet.due(60.0))  # ['vm-1'] once its interval has passed
 ```
 
@@ -90,7 +90,7 @@ azarovo-martingale analyze log.csv --out results/run1 --plot
 | `CusumGrowthDetector` | formula (14) | CUSUM-type statistic, no delay after long calm periods |
 | `MonitoringScheduler` | Fig. 3, steps 3–6 | the joint algorithm: detector, redistribution, interval |
 | `estimate_c` | assumption A1 | the largest change per step from data, with quantile and margin |
-| `VmMonitor`, `FleetMonitor` | Fig. 3 for streams | `update(t, used, free)` per VM, shared risk over a fleet |
+| `VmMonitor`, `FleetMonitor` | Fig. 3 for streams | `record_measurement(t, used, free)` per VM, shared risk over a fleet |
 | `read_log`, `analyse_log`, `render_markdown` | assumptions A1, A2, formula (6) | checks on a log, detectors, policy replay |
 
 ### Additions beyond the article
@@ -98,7 +98,8 @@ azarovo-martingale analyze log.csv --out results/run1 --plot
 These are marked in the docstrings and in the reports.
 
 * **`MixtureGrowthDetector`** (new). A uniform mixture of betting tests over a
-  fixed grid of fractions `lam` (0.1 … 0.9). It needs no choice of `lam`, and it
+  fixed grid of fractions `lam` (0.1 … 0.9 by default; the grid `lams` and the
+  weights `weights` are constructor parameters). It needs no choice of `lam`, and it
   keeps Ville's guarantee because an average of test martingales is again one.
   On the synthetic examples it detects a fast rise after about 14 steps and a
   slow one after about 70, against 18 and 95 for the single bet with `lam = 0.5`
@@ -124,7 +125,7 @@ these.
   looks and adaptive, irregular sampling.
 * **It works in log-capital.** Products of many factors underflow after hours of
   calm use; the detectors keep `ln K` and stay sensitive.
-* **It is a per-VM streaming API with state.** `VmMonitor.update(t, used, free)`,
+* **It is a per-VM streaming API with state.** `VmMonitor.record_measurement(t, used, free)`,
   a `FleetMonitor` for many VMs, and `to_dict`/`from_dict` for restarts.
 * **It has a log analysis for real data.** `azarovo-martingale analyze` checks the
   assumptions of the guarantee on a log, measures false alarms and delays, and
@@ -152,7 +153,7 @@ detected, and a decimal comma is accepted. See
 * [Publishing](https://github.com/89605502155/azarovo-martingale/blob/main/docs/en/publishing.md)
 
 Examples are in [examples/](https://github.com/89605502155/azarovo-martingale/tree/main/examples).
-Heavy Monte Carlo studies are in [experiments/](https://github.com/89605502155/azarovo-martingale/tree/main/experiments) and are not run in CI.
+Heavy Monte Carlo studies are in [experiments/](https://github.com/89605502155/azarovo-martingale/tree/main/experiments) and are not run by default.
 
 ## Development
 
@@ -164,13 +165,20 @@ scripts/install_hooks.sh  # the commit-message hook, once per clone
 ```
 
 Commit subjects have at most 8 characters and no body; `scripts/check_commit_msg.py`
-enforces it in the hook and in CI.
+enforces it in the local hook.
+
+## Authors
+
+- Andrey Ferubko (Андрей Ферубко), Bryansk State Engineering-Technological University (BGITU),
+  [ORCID 0009-0006-5625-137X](https://orcid.org/0009-0006-5625-137X), ferubko1999@yandex.ru
+- Oleg Kazakov (Олег Казаков), Bryansk State Engineering-Technological University (BGITU),
+  [ORCID 0000-0001-9665-8138](https://orcid.org/0000-0001-9665-8138), kazakov@bgitu.ru
 
 ## Citation
 
 See [CITATION.cff](https://github.com/89605502155/azarovo-martingale/blob/main/CITATION.cff).
-Andrey Ferubko, Bryansk State Engineering-Technological University (BGITU), 2026.
+Andrey Ferubko and Oleg Kazakov, Bryansk State Engineering-Technological University (BGITU), 2026.
 
 ## License
 
-MIT. Copyright (c) 2026 Andrey Ferubko.
+MIT. Copyright (c) 2026 Andrey Ferubko, Oleg Kazakov.
