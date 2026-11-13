@@ -96,6 +96,25 @@ def test_vm_monitor_calibrates_then_schedules() -> None:
     assert vm.checks == 1
 
 
+def test_vm_monitor_warmup_is_the_calibration_window() -> None:
+    # The window holds increments: warmup increments need warmup + 1 readings.
+    assert VmMonitor("vm-1").to_dict()["options"]["warmup"] == 50
+    vm = VmMonitor("vm-1", warmup=7, c_margin=1.0)
+    readings = [(float(t), 1000.0 + 2.0 * (t % 2)) for t in range(8)]
+    calibrated = []
+    for t, used in readings:
+        calibrated.append(vm.record_measurement(t, used, 500.0).calibrated)
+    assert calibrated == [False] * 7 + [True]
+    assert vm.c == pytest.approx(2.0)
+    fleet = FleetMonitor(n_vms=1, warmup=3, c_margin=1.0)
+    fleet.record_measurement("vm-1", 0.0, 1000.0, 500.0)
+    for t in (1.0, 2.0, 3.0):
+        fleet.record_measurement("vm-1", t, 1000.0 + 2.0 * (t % 2), 500.0)
+    assert fleet.monitor("vm-1").calibrated
+    with pytest.raises(ValueError, match="warmup"):
+        VmMonitor("vm-1", warmup=1)
+
+
 def test_vm_monitor_due_and_time_order() -> None:
     vm = VmMonitor("vm-1", c=20.0)
     assert vm.due(0.0)

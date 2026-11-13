@@ -92,7 +92,7 @@ d = vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(d.interval, vm.checks, vm.next_check_time)  # 495 1 496.0
 ```
 
-Without `c`, pass `warmup` (default 50) readings; `c` is then estimated with
+Without `c`, `warmup` (default 50) sets the calibration window: `c` is estimated from `warmup` increments, that is `warmup + 1` readings, with
 `c_quantile` and `c_margin`, and `Decision.calibrated` is `False` until then.
 Readings must have increasing times.
 

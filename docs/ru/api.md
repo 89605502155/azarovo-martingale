@@ -92,7 +92,7 @@ d = vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(d.interval, vm.checks, vm.next_check_time)  # 495 1 496.0
 ```
 
-Без `c` передайте `warmup` (по умолчанию 50) показаний; тогда `c` оценивается с
+Без `c` окно калибровки задаёт `warmup` (по умолчанию 50): `c` оценивается по `warmup` приращениям, то есть по `warmup + 1` показаниям, с
 `c_quantile` и `c_margin`, а `Decision.calibrated` равно `False`, пока оценка не готова.
 Времена показаний должны возрастать.
 

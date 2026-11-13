@@ -38,5 +38,8 @@ monitoring interval of KVM virtual machines (A. Ferubko and O. Kazakov, BGITU).
   `VmMonitor` take `weights` too) and `SubGaussianGrowthDetector` (sub-Gaussian
   bets, the variant of the earlier code).
 * Optional trace plots (`azarovo-martingale[plot]`).
+* The calibration window of `VmMonitor` and `FleetMonitor` is the parameter `warmup`
+  (default 50 increments, at least 2; `warmup + 1` readings are needed). The article
+  and the demo notebook set it to 20 explicitly.
 * Documentation in English and Russian, five examples, tests (fast; Monte Carlo
   tests are marked `slow`).
