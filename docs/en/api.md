@@ -39,6 +39,10 @@ print(restored.log_capital == single.log_capital)  # True
 
 `n` is the length of the interval in base steps; `dx` is normalised to
 `dx / (n c)` and clipped to [-1, 1]. Non-finite `dx` raises `ValueError`.
+The option `clip` (default `True`) controls the clipping of the detectors and of
+`MonitoringScheduler` and `VmMonitor`. Under assumption A1 it changes nothing. If
+A1 fails, the clipped detector stays defined and gives no guarantee; with
+`clip=False` the update raises `ValueError` instead.
 
 ## Scheduler
 
@@ -68,6 +72,10 @@ print(round(c, 1), round(exceedance_share(deltas, None, c), 2))  # 48.0 0.0
 
 `quantile = 1` is the maximum, the choice of the article. A smaller quantile is
 robust to rare jumps; the guarantee (6) then no longer covers those jumps.
+Pass only the increments over one base step: a change over several steps can be far
+below the largest single-step change, because the steps cancel. An estimate `c`
+satisfies A1 only if the sample is representative, and no guarantee is proved for
+an estimated `c`.
 
 `MixtureGrowthDetector(c, alpha=0.01, lams=DEFAULT_BETS, weights=None)` takes its
 bet grid `lams` (non-empty, each bet in [0, 1), default 0.1 to 0.9) and optional
@@ -92,9 +100,12 @@ d = vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(d.interval, vm.checks, vm.next_check_time)  # 495 1 496.0
 ```
 
-Without `c`, `warmup` (default 50) sets the calibration window: `c` is estimated from `warmup` increments, that is `warmup + 1` readings, with
-`c_quantile` and `c_margin`, and `Decision.calibrated` is `False` until then.
-Readings must have increasing times.
+Without `c`, `warmup` (default 50) sets the calibration window: `c` is estimated from
+`warmup` increments over exactly one base step, with `c_quantile` and `c_margin`, and
+`Decision.calibrated` is `False` until then. A reading that comes more than one step
+after the previous one does not enter the window. Poll the VM at every base step, or
+pass `c`; otherwise the monitor never calibrates. `vm.calibration_samples` counts the
+one-step increments collected so far. Readings must have increasing times.
 
 ## Several VMs
 

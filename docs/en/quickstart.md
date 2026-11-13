@@ -73,8 +73,8 @@ vm.record_measurement(1.0, used=2049.0, free=1351.0)
 print(vm.interval, vm.due(100.0))  # 495 False
 ```
 
-Without `c`, the monitor estimates it from the first `warmup` increments (that is, `warmup + 1` readings; the default is `warmup = 50`) and uses the
-conservative `n_min` until then. See [the API](api.md).
+Without `c`, the monitor estimates it from the first `warmup` increments over one base step (the default is `warmup = 50`) and uses the
+conservative `n_min` until then. Readings more than one step apart do not enter the estimate. See [the API](api.md).
 
 ## 5. From the command line
 

@@ -4,7 +4,16 @@ All notable changes of azarovo-martingale are documented here. The project follo
 [Semantic Versioning](https://semver.org). Russian summary: the same entries
 apply; the documentation is in `docs/ru/`.
 
-## [0.0.1] — 2026-11-11
+## [0.0.1] — 2026-11-11 (revised 2026-11-14, same version)
+
+* Calibration of `c` (`VmMonitor`, `FleetMonitor`, `analyse_log`) uses only increments over
+  exactly one base step. Earlier versions divided the change over an interval by its length,
+  which underestimates the largest one-step change that A1 bounds.
+* Option `clip` (default `True`) of the growth detectors, `MonitoringScheduler`, `VmMonitor`
+  and `FleetMonitor`: with `clip=False` a change violating A1 raises `ValueError`.
+* `VmMonitor.calibration_samples`: number of one-step increments in the calibration window.
+* Log analysis: the one-step check of A1 (share of rates above `c`, largest rate) uses
+  one-step increments only.
 
 First release: the methods of the article on the martingale choice of the
 monitoring interval of KVM virtual machines (A. Ferubko and O. Kazakov, BGITU).
