@@ -4,6 +4,11 @@ Assumption A1 of the article requires a bound ``c`` on the change of the use ove
 one base step. The sample maximum with a safety margin is the bound used by the
 article. A quantile below 1 is a robust alternative: a few rare jumps then do not
 set ``c``, but the guarantee of formula (6) no longer covers those jumps.
+
+The estimate is meaningful only for changes over one base step. A change over ``k``
+steps can be far below the largest single-step change, because the steps cancel,
+so the monitors and the log analysis pass one-step pairs only. An estimated ``c``
+satisfies A1 only if the sample is representative: no guarantee is proved for it.
 """
 
 from __future__ import annotations

@@ -189,3 +189,38 @@ def test_scheduler_and_monitor_pass_mixture_weights_through():
     vm.record_measurement(1.0, used=1001.0, free=500.0)
     restored = VmMonitor.from_dict(vm.to_dict())
     assert restored.to_dict() == vm.to_dict()
+
+
+def test_scheduler_passes_clip_to_the_detector() -> None:
+    on = MonitoringScheduler(c=20.0, kind="mixture", clip=True)
+    off = MonitoringScheduler(c=20.0, kind="mixture", clip=False)
+    assert on.detector.to_dict()["clip"] is True  # type: ignore[union-attr]
+    assert off.detector.to_dict()["clip"] is False  # type: ignore[union-attr]
+    with pytest.raises(ValueError, match="A1"):
+        off.step(dx=500.0, reserve=512.0, n_elapsed=1)
+    assert on.step(dx=500.0, reserve=512.0, n_elapsed=1).alarm is False  # clipped, no error
+    restored = MonitoringScheduler.from_dict(off.to_dict())
+    assert restored.clip is False
+
+
+def test_vm_monitor_calibrates_only_on_one_step_increments() -> None:
+    # Readings every 2 s: each increment covers two steps, so none enters the estimate.
+    vm = VmMonitor("vm-1", warmup=3, c_margin=1.0, n_min=1)
+    vm.record_measurement(0.0, 1000.0, 500.0)
+    for t in range(2, 20, 2):
+        decision = vm.record_measurement(float(t), 1000.0 + 50.0 * t, 500.0)
+        assert decision.calibrated is False
+    assert vm.calibration_samples == 0
+    assert not vm.calibrated
+
+
+def test_vm_monitor_one_step_c_is_the_max_single_step_change() -> None:
+    # A two-step change of 100 is not a one-step change: c is the largest one-step change.
+    vm = VmMonitor("vm-1", warmup=3, c_margin=1.0)
+    vm.record_measurement(0.0, 1000.0, 500.0)
+    vm.record_measurement(1.0, 1010.0, 500.0)
+    vm.record_measurement(3.0, 1110.0, 500.0)  # a two-step interval, skipped
+    vm.record_measurement(4.0, 1125.0, 500.0)
+    vm.record_measurement(5.0, 1135.0, 500.0)
+    assert vm.calibrated  # the one-step pairs 10, 15, 10 completed the window of 3
+    assert vm.c == pytest.approx(15.0)

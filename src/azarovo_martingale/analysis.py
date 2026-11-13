@@ -545,6 +545,11 @@ def _replay(
 
 
 # -------------------------------------------------------------- per VM
+def _is_one_step(interval: float, step: float) -> bool:
+    """Return ``True`` if the interval between two readings is exactly one base step."""
+    return abs(interval / step - 1.0) <= 1e-9
+
+
 def _analyse_vm(vm: VmLog, o: AnalysisOptions, has_free: bool, has_phase: bool) -> VmReport:
     report = VmReport(
         vm=vm.name, samples=len(vm), duplicates=vm.duplicates, delta=o.delta, alpha=o.alpha
@@ -578,12 +583,17 @@ def _analyse_vm(vm: VmLog, o: AnalysisOptions, has_free: bool, has_phase: bool) 
         c_source = "estimated from the whole log, checked on the same data"
     if o.c is None:
         stop = i0 if o.train_frac > 0 else len(time_all)
-        steps_ = [(time_all[k] - time_all[k - 1]) / o.step for k in range(1, stop)]
-        deltas = [used_all[k] - used_all[k - 1] for k in range(1, stop)]
+        # A1 bounds the change over one base step only; a change over several steps
+        # averages out the largest one-step change, so only one-step pairs enter c.
+        deltas = [
+            used_all[k] - used_all[k - 1]
+            for k in range(1, stop)
+            if _is_one_step(time_all[k] - time_all[k - 1], o.step)
+        ]
         try:
-            c = estimate_c(deltas, steps_, quantile=o.c_quantile, margin=o.c_margin)
+            c = estimate_c(deltas, quantile=o.c_quantile, margin=o.c_margin)
         except ValueError as exc:
-            report.skipped = f"c cannot be estimated: {exc}"
+            report.skipped = f"c cannot be estimated from one-step increments: {exc}"
             return report
 
     time, used, free = time_all[i0:], used_all[i0:], free_all[i0:]
@@ -592,6 +602,7 @@ def _analyse_vm(vm: VmLog, o: AnalysisOptions, has_free: bool, has_phase: bool) 
     rates = [
         (used[k + 1] - used[k]) / ((time[k + 1] - time[k]) / o.step) for k in range(n_test - 1)
     ]
+    one_step = [_is_one_step(time[k + 1] - time[k], o.step) for k in range(n_test - 1)]
     calm_inc = [True] * len(rates) if growth is None else [not g for g in growth[1:]]
     calm_rates = [r for r, ok in zip(rates, calm_inc, strict=True) if ok]
     both = [calm_inc[k] and calm_inc[k + 1] for k in range(len(rates) - 1)]
@@ -603,8 +614,11 @@ def _analyse_vm(vm: VmLog, o: AnalysisOptions, has_free: bool, has_phase: bool) 
     report.c_source = c_source
     report.test_start = float(time[0])
     report.test_end = float(time[-1])
-    report.a1_share_above_c = sum(1 for r in rates if abs(r) > c) / len(rates)
-    report.a1_max_rate = max(abs(r) for r in rates)
+    single = [r for r, ok in zip(rates, one_step, strict=True) if ok]
+    report.a1_share_above_c = (
+        sum(1 for r in single if abs(r) > c) / len(single) if single else math.nan
+    )
+    report.a1_max_rate = max((abs(r) for r in single), default=math.nan)
     report.a2_mean_calm_rate = _mean(calm_rates)
     report.a2_lag1_autocorr = _pearson(xs, ys)
     report.guarantee = _check_guarantee(time, used, free, growth, c, o)
@@ -725,8 +739,9 @@ def render_markdown(
             lines.append(f"Dropped samples with a repeated time: {rep.duplicates}.")
         lines.append("")
         lines.append(
-            f"Assumption A1: the rate |dx| exceeds c for {_pct(rep.a1_share_above_c)} % of "
-            f"the increments; the largest rate is {_fmt(rep.a1_max_rate)} MiB per step."
+            f"Assumption A1: the one-step rate |dx| exceeds c for "
+            f"{_pct(rep.a1_share_above_c)} % of the one-step increments; the largest one-step "
+            f"rate is {_fmt(rep.a1_max_rate)} MiB per step."
         )
         lines.append(
             f"Assumption A2: the mean increment in calm use is "

@@ -20,6 +20,9 @@ from .validation import validate_measurement
 
 __all__ = ["FleetMonitor", "VmMonitor"]
 
+_ONE_STEP_TOLERANCE = 1e-9
+"""Two readings count as one base step if their interval differs from one step by less."""
+
 
 @dataclass
 class _Counts:
@@ -39,14 +42,17 @@ class VmMonitor:
         Identifier of the VM.
     c : float, optional
         Known bound of the change per base step, MiB. If omitted, ``c`` is
-        estimated from the first ``warmup`` checks. Until then the interval is the
-        conservative ``n_min`` and :attr:`Decision.calibrated` is ``False``.
-    delta, alpha, lam, n_min, n_max, kind, cusum_threshold, lams :
+        estimated from the first ``warmup`` increments over exactly one base step.
+        Until then the interval is the conservative ``n_min`` and
+        :attr:`Decision.calibrated` is ``False``. Readings that are more than one
+        base step apart do not enter the estimate: the change over several steps
+        averages out the largest single-step change, which A1 bounds.
+    delta, alpha, lam, n_min, n_max, kind, cusum_threshold, lams, clip :
         Parameters of :class:`~azarovo_martingale.MonitoringScheduler`.
     step : float, default 1.0
         Length of a base step, in the unit of the timestamps.
     warmup : int, default 50
-        Number of increments used to estimate ``c``; at least 2.
+        Number of one-step increments used to estimate ``c``; at least 2.
     c_quantile, c_margin : float
         Parameters of :func:`~azarovo_martingale.estimate_c`.
 
@@ -75,6 +81,7 @@ class VmMonitor:
         cusum_threshold: float = 1e5,
         lams: tuple[float, ...] | None = None,
         weights: tuple[float, ...] | None = None,
+        clip: bool = True,
         step: float = 1.0,
         warmup: int = 50,
         c_quantile: float = 1.0,
@@ -96,6 +103,7 @@ class VmMonitor:
             "cusum_threshold": cusum_threshold,
             "lams": None if lams is None else list(lams),
             "weights": None if weights is None else list(weights),
+            "clip": clip,
             "step": step,
             "warmup": warmup,
             "c_quantile": c_quantile,
@@ -125,6 +133,7 @@ class VmMonitor:
             cusum_threshold=o["cusum_threshold"],
             lams=lams,
             weights=weights,
+            clip=bool(o["clip"]),
         )
 
     @property
@@ -136,6 +145,11 @@ class VmMonitor:
     def c(self) -> float | None:
         """The bound ``c`` in use, or ``None`` before calibration."""
         return None if self._scheduler is None else self._scheduler.c
+
+    @property
+    def calibration_samples(self) -> int:
+        """Number of one-step increments in the calibration window (0 once calibrated)."""
+        return len(self._calibration)
 
     @property
     def interval(self) -> int:
@@ -218,11 +232,12 @@ class VmMonitor:
         return decision
 
     def _calibrate_or_wait(self, dx: float, n_elapsed: float) -> Decision:
-        """Collect increments until ``c`` can be estimated, then start the scheduler."""
+        """Collect one-step increments until ``c`` can be estimated, then start the scheduler."""
         o = self._options
         window = self._calibration
-        window.append((dx, n_elapsed))
-        del window[: -int(o["warmup"])]
+        if abs(n_elapsed - 1.0) <= _ONE_STEP_TOLERANCE:
+            window.append((dx, n_elapsed))
+            del window[: -int(o["warmup"])]
         waiting = Decision(self.interval, redistribute=False, alarm=False, calibrated=False)
         if len(window) < int(o["warmup"]):
             return waiting

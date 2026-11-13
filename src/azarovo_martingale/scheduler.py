@@ -84,6 +84,9 @@ class MonitoringScheduler:
     weights : tuple of float, optional
         Weights of the bets of the ``mixture`` detector (non-negative, sum 1);
         uniform by default. Ignored by the other kinds.
+    clip : bool, default True
+        Clip the normalised change ``Y`` to [-1, 1] in the detector (see
+        :class:`~azarovo_martingale.GrowthDetector`). Under A1 this changes nothing.
 
     Attributes
     ----------
@@ -114,6 +117,7 @@ class MonitoringScheduler:
     cusum_threshold: float = 1e5
     lams: tuple[float, ...] | None = None
     weights: tuple[float, ...] | None = None
+    clip: bool = True
     detector: GrowthTest = field(init=False, repr=False)
     interval: int = field(init=False)
 
@@ -172,6 +176,7 @@ class MonitoringScheduler:
             "cusum_threshold": self.cusum_threshold,
             "lams": None if self.lams is None else list(self.lams),
             "weights": None if self.weights is None else list(self.weights),
+            "clip": self.clip,
             "interval": self.interval,
             "detector": self.detector.to_dict(),
         }
@@ -208,16 +213,16 @@ def _build_detector(sched: MonitoringScheduler) -> GrowthTest:
     """Create the detector named by ``sched.kind`` with the parameters of the scheduler."""
     kind: str = sched.kind
     if kind == "ville":
-        return GrowthDetector(sched.c, sched.lam, sched.alpha)
+        return GrowthDetector(sched.c, sched.lam, sched.alpha, clip=sched.clip)
     if kind == "cusum":
-        return CusumGrowthDetector(sched.c, sched.lam, sched.cusum_threshold)
+        return CusumGrowthDetector(sched.c, sched.lam, sched.cusum_threshold, clip=sched.clip)
     if kind == "subgaussian":
         if sched.lams is None:
-            return SubGaussianGrowthDetector(sched.c, sched.alpha)
-        return SubGaussianGrowthDetector(sched.c, sched.alpha, sched.lams)
+            return SubGaussianGrowthDetector(sched.c, sched.alpha, clip=sched.clip)
+        return SubGaussianGrowthDetector(sched.c, sched.alpha, sched.lams, clip=sched.clip)
     if kind == "mixture":
         return MixtureGrowthDetector(
-            sched.c, sched.alpha, sched.lams or DEFAULT_BETS, sched.weights
+            sched.c, sched.alpha, sched.lams or DEFAULT_BETS, sched.weights, clip=sched.clip
         )
     msg = f"kind must be one of {', '.join(DETECTOR_KINDS)}, got {kind!r}"
     raise ValueError(msg)

@@ -271,3 +271,61 @@ def test_weighted_mixture_is_finite_after_long_calm_period():
     for _ in range(5_000):
         det.update(-50.0)
     assert math.isfinite(det.log_capital)
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda clip: GrowthDetector(c=50.0, lam=0.5, clip=clip),
+        lambda clip: CusumGrowthDetector(c=50.0, lam=0.5, clip=clip),
+        lambda clip: MixtureGrowthDetector(c=50.0, clip=clip),
+    ],
+    ids=["ville", "cusum", "mixture"],
+)
+def test_clip_true_bounds_a_violation_of_a1(make: Callable[[bool], Any]) -> None:
+    # A jump of 3c violates A1. With clipping the capital stays positive and finite.
+    det = make(True)
+    det.update(150.0)  # no exception: the normalised change is clipped to +1
+    state = getattr(det, "log_capital", None)
+    if state is None:
+        state = det.log_statistic  # type: ignore[attr-defined]
+    assert math.isfinite(state)
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda clip: GrowthDetector(c=50.0, lam=0.5, clip=clip),
+        lambda clip: CusumGrowthDetector(c=50.0, lam=0.5, clip=clip),
+        lambda clip: MixtureGrowthDetector(c=50.0, clip=clip),
+    ],
+    ids=["ville", "cusum", "mixture"],
+)
+def test_clip_false_refuses_a_violation_of_a1(make: Callable[[bool], Any]) -> None:
+    det = make(False)
+    with pytest.raises(ValueError, match="A1"):
+        det.update(150.0)
+    # Inside A1 the two settings coincide.
+    assert make(False).update(30.0) == make(True).update(30.0)
+
+
+def test_clip_false_is_identical_to_clip_true_under_a1() -> None:
+    dxs = [10.0, -20.0, 5.0, -10.0, 30.0, 49.0]
+    on, off = GrowthDetector(c=50.0, clip=True), GrowthDetector(c=50.0, clip=False)
+    for dx in dxs:
+        assert on.update(dx) == off.update(dx)
+    assert on.log_capital == pytest.approx(off.log_capital)
+
+
+def test_clip_false_subgaussian_refuses_a_jump_above_n_c() -> None:
+    det = SubGaussianGrowthDetector(c=50.0, clip=False)
+    with pytest.raises(ValueError, match="A1"):
+        det.update(51.0)
+    assert SubGaussianGrowthDetector(c=50.0, clip=True).update(51.0) is False
+
+
+def test_clip_is_kept_by_the_state_round_trip() -> None:
+    det = GrowthDetector(c=50.0, clip=False)
+    assert GrowthDetector.from_dict(det.to_dict()).clip is False
+    old_state = {"c": 50.0, "lam": 0.5, "alpha": 0.01, "log_capital": 0.0}
+    assert GrowthDetector.from_dict(old_state).clip is True

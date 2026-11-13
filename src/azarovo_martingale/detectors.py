@@ -65,13 +65,27 @@ class GrowthTest(Protocol):
         ...
 
 
-def _normalised(dx: float, n: float, c: float) -> float:
-    """Return ``Y = dx / (n c)`` clipped to [-1, 1] (assumption A1, normalisation of (11))."""
+def _normalised(dx: float, n: float, c: float, clip: bool = True) -> float:
+    """Return ``Y = dx / (n c)``, clipped to [-1, 1] if ``clip`` (normalisation of (11)).
+
+    Under assumption A1 the clipping does nothing. If A1 fails, the clipped value keeps the
+    capital positive; without clipping such a value raises in the callers, because the
+    capital would become non-positive and its logarithm undefined.
+    """
     check_positive("n", n)
     if not math.isfinite(dx):
         msg = f"dx must be finite, got {dx!r}"
         raise ValueError(msg)
-    return max(-1.0, min(1.0, dx / (n * c)))
+    y = dx / (n * c)
+    if clip:
+        return max(-1.0, min(1.0, y))
+    if y < -1.0 or y > 1.0:
+        msg = (
+            f"|Y| = {abs(y):.3g} > 1: assumption A1 is violated for c = {c!r}; "
+            "use clip=True or a larger c"
+        )
+        raise ValueError(msg)
+    return y
 
 
 def _log_mean_exp(values: Sequence[float]) -> float:
@@ -111,11 +125,15 @@ class GrowthDetector:
         Admissible probability of a false alarm.
     log_capital : float, default 0.0
         Logarithm of the capital; 0 means ``K = 1``.
+    clip : bool, default True
+        Clip ``Y`` to [-1, 1]. Under assumption A1 this changes nothing. If A1 fails
+        (a jump above ``n c``), clipping keeps the capital positive; with ``clip=False``
+        such an update raises ``ValueError``. Clipping gives no guarantee in that case.
 
     Notes
     -----
-    The increment is clipped to [-1, 1] after normalisation. So the capital stays
-    positive and a rare jump larger than ``n c`` cannot make it negative.
+    The increment is clipped to [-1, 1] after normalisation by default. So the capital
+    stays positive and a rare jump larger than ``n c`` cannot make it negative.
 
     Examples
     --------
@@ -138,6 +156,7 @@ class GrowthDetector:
     lam: float = 0.5
     alpha: float = 0.01
     log_capital: float = 0.0
+    clip: bool = True
 
     def __post_init__(self) -> None:
         """Check the parameters."""
@@ -160,7 +179,7 @@ class GrowthDetector:
 
         Returns ``True`` if the capital reached ``1 / alpha`` (an alarm).
         """
-        y = _normalised(dx, n, self.c)
+        y = _normalised(dx, n, self.c, self.clip)
         self.log_capital += math.log1p(self.lam * y)
         return self.log_capital >= -math.log(self.alpha)
 
@@ -198,6 +217,8 @@ class CusumGrowthDetector:
         per 28 hours on average.
     log_statistic : float, default 0.0
         Logarithm of the statistic ``C``.
+    clip : bool, default True
+        Clip ``Y`` to [-1, 1], as in :class:`GrowthDetector`.
 
     Examples
     --------
@@ -212,6 +233,7 @@ class CusumGrowthDetector:
     lam: float = 0.5
     threshold: float = 1e5
     log_statistic: float = 0.0
+    clip: bool = True
 
     def __post_init__(self) -> None:
         """Check the parameters."""
@@ -228,7 +250,7 @@ class CusumGrowthDetector:
 
     def update(self, dx: float, n: float = 1.0) -> bool:
         """Take in the change ``dx`` over ``n`` base steps. ``True`` means an alarm."""
-        y = _normalised(dx, n, self.c)
+        y = _normalised(dx, n, self.c, self.clip)
         self.log_statistic = max(self.log_statistic, 0.0) + math.log1p(self.lam * y)
         return self.log_statistic >= math.log(self.threshold)
 
@@ -268,12 +290,15 @@ class SubGaussianGrowthDetector:
         Positive scale parameters of the bets.
     logs : list of float, optional
         Logarithms of the capitals of the bets; zeros at the start.
+    clip : bool, default True
+        Clip ``dx`` to ``[-n c, n c]`` before the normalisation, as A1 requires.
     """
 
     c: float
     alpha: float = 0.01
     lams: tuple[float, ...] = _DEFAULT_SUBGAUSSIAN_LAMS
     logs: list[float] = field(default_factory=list)
+    clip: bool = True
 
     def __post_init__(self) -> None:
         """Check the parameters."""
@@ -306,7 +331,12 @@ class SubGaussianGrowthDetector:
             msg = f"dx must be finite, got {dx!r}"
             raise ValueError(msg)
         bound = n * self.c
-        z = max(-bound, min(bound, dx)) / (self.c * math.sqrt(n))
+        if self.clip:
+            dx = max(-bound, min(bound, dx))
+        elif abs(dx) > bound:
+            msg = f"|dx| = {abs(dx):.3g} > n c = {bound!r}: assumption A1 is violated"
+            raise ValueError(msg)
+        z = dx / (self.c * math.sqrt(n))
         self.logs = [
             x + lam * z - 0.5 * lam * lam for x, lam in zip(self.logs, self.lams, strict=True)
         ]
@@ -358,6 +388,8 @@ class MixtureGrowthDetector:
         uniform. Weights are fixed before the data, like the grid.
     logs : list of float, optional
         Logarithms of the capitals of the single bets; zeros at the start.
+    clip : bool, default True
+        Clip ``Y`` to [-1, 1], as in :class:`GrowthDetector`.
 
     Raises
     ------
@@ -387,6 +419,7 @@ class MixtureGrowthDetector:
     lams: tuple[float, ...] = DEFAULT_BETS
     weights: tuple[float, ...] | None = None
     logs: list[float] = field(default_factory=list)
+    clip: bool = True
 
     def __post_init__(self) -> None:
         """Check the parameters and fill in the uniform weights."""
@@ -418,7 +451,7 @@ class MixtureGrowthDetector:
 
     def update(self, dx: float, n: float = 1.0) -> bool:
         """Take in the change ``dx`` over ``n`` base steps. ``True`` means an alarm."""
-        y = _normalised(dx, n, self.c)
+        y = _normalised(dx, n, self.c, self.clip)
         self.logs = [x + math.log1p(lam * y) for x, lam in zip(self.logs, self.lams, strict=True)]
         return self.log_capital >= -math.log(self.alpha)
 
